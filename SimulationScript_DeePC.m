@@ -23,8 +23,8 @@ nu = size(B,2);
 x_ss = Mx*5+Nx;
 u_ss = Mu*5+Nu;
 
-Wvar = 0.1; %noise variance for offline measured data
-wvar = 0.1; %noise variance for online measured data
+Wvar = 0; %noise variance for offline measured data
+wvar = 0; %noise variance for online measured data
 
 
 %% Controller parameters
@@ -37,11 +37,11 @@ Tini = 12;            % Window of past input data used online for initializing t
 
 
 %% Generate data
-T = 200;  %the larger the data length, the better the robust performance; complexity of DeePC increases; 
+T = 100;  %the larger the data length, the better the robust performance; complexity of DeePC increases; 
 U = 0.8*idinput([T+N+Tini, nu], 'PRBS', [0, 1], [0, 1])';
-l1=1*1e+5;                % Weight of g regularization (zero if there is no noise)
-l2=1*1e+5;                %lambda 2 (zero if there is no noise or disturbance)
-l3=1*1e+5;                %lambda 3 (zero if there is no noise or disturbance)
+l1=1*1e-7;                % Weight of g regularization (zero if there is no noise)
+l2=1e+5;                %lambda 2 (zero if there is no noise or disturbance)
+l3=1e+5;                %lambda 3 (zero if there is no noise or disturbance)
 
 X = zeros(n, size(U,2));
 Y = zeros(ny,size(U,2));
@@ -104,7 +104,7 @@ objective = objective + l1*(g'*(eye(length(PI))-PI)'*(eye(length(PI))-PI)*g) + l
 %however not consistent
 
 % Build constraints
-constraints = [u_ini==Up*g+1*sigma_u, y_ini==Yp*g+1*sigma_y, y==Yf*g, u==Uf*g];  % DeePC equality constraints
+constraints = [u_ini==Up*g+sigma_u, y_ini==Yp*g+sigma_y, y==Yf*g, u==Uf*g];  % DeePC equality constraints
 
 %if there is no disturbance / noise multiply sigma_u and sigma_y by zero to
 %remove the softening of the equality constraints
@@ -116,7 +116,8 @@ end
 Parameters = {u_ini, y_ini, ref};
 Outputs = {u, y};
 
-%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent; other solvers can be used with YALMIP
+%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent but must be installed (academic license is free);
+%% other solvers can be used with YALMIP
 options = sdpsettings('solver', 'quadprog', 'verbose', 0, 'debug', 0);
 controller = optimizer(constraints, objective, options, Parameters, Outputs);
 
