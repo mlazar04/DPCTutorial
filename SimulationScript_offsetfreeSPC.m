@@ -22,13 +22,13 @@ nu = size(B,2);
 x_ss = Mx*5+Nx;
 u_ss = Mu*5+Nu;
 
-Wvar = 0.1; %noise variance for offline measured data
-wvar = 0.1; %noise variance for online measured data
+Wvar = 0.05; %noise variance for offline measured data
+wvar = 0.05; %noise variance for online measured data
 
 %% Controller parameters
 N = 15;               % Prediction horizon
 Q = 10;               % Output cost weight
-R = 1*eye(2);       % Input cost weight
+R = 0.1*eye(2);       % Input cost weight
 
 Tini = 12;    % Window of past input data used online for initializing the predicted trajectories
 
@@ -36,7 +36,7 @@ Tini = 12;    % Window of past input data used online for initializing the predi
 
 
 %% Generate data
-T = 4000;  %size of the data sequence used for estimating the SPC prediction matrices; complexity of the SPC algorithm is not affected;
+T = 400;  %size of the data sequence used for estimating the SPC prediction matrices; complexity of the SPC algorithm is not affected;
 U = 0.8*idinput([T+N+Tini, nu], 'PRBS', [0, 1], [0, 1])';
 X = zeros(n, size(U,2));
 Y = zeros(ny,size(U,2));
@@ -104,23 +104,24 @@ end
 Parameters = {du_ini, y_ini, ref, u_km};
 Outputs = {du, y};
 
-%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent; other solvers can be used with YALMIP
+%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent but must be installed (academic license is free);
+%% other solvers can be used with YALMIP
 options = sdpsettings('solver', 'quadprog', 'verbose', 0, 'debug', 0);
 
-controller = optimizer(constraints,objective,options, Parameters, Outputs);
+controller = optimizer(constraints, objective, options, Parameters, Outputs);
 
 %% Initialize Simulation (the simulation duration and plotting part should be adapted to each example / system)
 Tmax = 600*Ts;
 t = 0:Ts:Tmax;
 simLen = size(t,2);
-x0 = zeros(5,1); %initial condition
+x0 = 0*ones(5,1); %initial condition
 
 %reference and disturbance sequences. Note that reference must be N samples
 %longer to accommodate for the last predictions
 r = zeros(ny, simLen+N);
 r(:,5e-5/Ts:end) = 5;
 d = zeros(ny, simLen);
-d(:,6e-4/Ts:1e-3/Ts) = -0.025;
+d(:,6e-4/Ts:1e-3/Ts) = 1*-0.025;
 
 y = zeros(ny, simLen);
 u = zeros(nu, simLen);
@@ -154,40 +155,22 @@ for k = 1:simLen
         dU_ini = dU_ini(:); %flatten vector
         Y_ini = y(:,k-Tini+1:k);
         Y_ini = Y_ini(:);
-        
+    
         [Sol, err] = controller({dU_ini, Y_ini, Rk, u(:,max(1,k-1))});
+    
         dUk = Sol{1};
         Yk = Sol{2};
         du(:,k) = dUk(1:nu);
     else
         %to prevent infeasible solutions initially, let the system run in
         %open loop until enough data is gathered to construct U_ini, Y_ini
-       du(:,k) = 1*rand(nu, 1); %u(:,k) = 1*rand(nu, 1);
+       du(:,k) = 1*rand(nu, 1)-u(:,max(1, k-1)); 
     end
 
     %update system dynamics
     u(:,k) = u(:,max(1,k-1)) + du(:,k);
     
-    %during the initial part of the simulation when random inputs are
-    %generated, the following operations limit the u to the interval [0,1]
-    %where the duty-cycles are constrained
-    
-    %after k>=Tini+1 these operations will have no effect, because the
-    %offset-free SPC solvers enforces the constraints
-    
-    if u(1,k) >=1
-        u(1,k)=1;
-    end
-    if u(1,k) <=0
-        u(1,k)=0;
-    end
-    if u(2,k) >=1
-        u(2,k)=1;
-    end
-    if u(2,k) <=0
-        u(2,k)=0;
-    end
-    
+   
     x(:,k+1) = A*x(:,k) + B*u(:,k) + [0;0;0;0;1]*d(:,k);
     
     
@@ -222,8 +205,3 @@ stairs(t, u(2,:), 'b');
 stairs(t, u_ss(2)*ones(1,length(t)), '--k');
 
 ylabel('Duty-cycles ');
-
-
-
-
-
