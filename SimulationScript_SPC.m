@@ -22,8 +22,8 @@ nu = size(B,2);
 x_ss = Mx*5+Nx;
 u_ss = Mu*5+Nu;
 
-Wvar = 0.1; %noise variance for offline measured data
-wvar = 0.1; %noise variance for online measured data
+Wvar = 0; %noise variance for offline measured data
+wvar = 0; %noise variance for online measured data
 
 %% Controller parameters
 N = 15;               % Prediction horizon
@@ -36,7 +36,7 @@ Tini = 12;    % Window of past input data used online for initializing the predi
 
 
 %% Generate data
-T = 4000; %size of the data sequence used for estimating the SPC prediction matrices; complexity of the SPC algorithm is not affected;
+T = 100; %size of the data sequence used for estimating the SPC prediction matrices; complexity of the SPC algorithm is not affected;
 U = 0.8*idinput([T+N+Tini, nu], 'PRBS', [0, 1], [0, 1])';
 X = zeros(n, size(U,2));
 Y = zeros(ny,size(U,2));
@@ -81,7 +81,7 @@ Psi = kron(eye(N), R);
 Omega = kron(eye(N), Q);
 Uss=[];
 for i=1:1:N
-    Uss=[Uss; u_ss];
+    Uss=[0*Uss; 0*u_ss];
 end
 u = sdpvar(nu*N,1);
 y = sdpvar(ny*N,1);
@@ -97,7 +97,8 @@ end
 Parameters = {u_ini, y_ini, ref};
 Outputs = {u, y};
 
-%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent; other solvers can be used with YALMIP
+%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent but must be installed (academic license is free);
+%% other solvers can be used with YALMIP
 options = sdpsettings('solver', 'quadprog', 'verbose', 0, 'debug', 0);
 
 controller = optimizer(constraints, objective, options, Parameters, Outputs);
@@ -170,7 +171,7 @@ figure();
 ax1 = subplot(311);
 stairs(t, r(1,1:simLen), 'k', 'DisplayName', 'Reference');
 hold on;
-stairs(t, y(1,:), 'r', 'DisplayName', 'SPC');
+stairs(t, y(1,:), 'r', 'LineWidth',1, 'DisplayName', 'SPC');
 
 ylabel('Output current [A]');
 legend;
@@ -178,16 +179,16 @@ axis([0 t(end) 0 5.5]);
 ax2 = subplot(312);
 stairs(t, r(1,1:simLen), 'k', 'DisplayName', 'Reference');
 hold on;
-stairs(t, y(1,:), 'r', 'DisplayName', 'SPC');
+stairs(t, y(1,:), 'r', 'LineWidth',1, 'DisplayName', 'SPC');
 
 ylabel('Output current [A]');
 axis([0 t(end) 4.5 5.5]);
 
 ax3 = subplot(313);
 hold on;
-stairs(t, u(1,:), 'r');
+stairs(t, u(1,:), 'r','LineWidth',1);
 stairs(t, u_ss(1)*ones(1,length(t)), '--k');
-stairs(t, u(2,:), 'b');
+stairs(t, u(2,:), 'b','LineWidth',1);
 stairs(t, u_ss(2)*ones(1,length(t)), '--k');
 axis([0 t(end) 0 1]);
 ylabel('Duty-cycles');
