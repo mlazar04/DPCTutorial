@@ -22,8 +22,8 @@ nu = size(B,2);
 x_ss = Mx*5+Nx;
 u_ss = Mu*5+Nu;
 
-Wvar = 0.01; %noise variance for offline measured data
-wvar = 0.01; %noise variance for online measured data
+Wvar = 0.05; %noise variance for offline measured data
+wvar = 0.05; %noise variance for online measured data
 
 %% Controller parameters
 N = 15;               % Prediction horizon
@@ -38,11 +38,17 @@ Tini = 12;            % Window of past input data used online for initializing t
 % An offset / bias in tracking may still be observed if T is too low; this will also be observed for offset-free SPC with the same T
 % The offset-free property is guaranteed only assuming the data lenth is large enough to ensure good estimation
 
-T = 200; %the larger the data length, the better the robust performance; complexity of DeePC increases; 
+T = 400; %the larger the data length, the better the robust performance; complexity of DeePC increases; 
+
+%DeePC will take longer to simulate for the chosen T; T must be chosen large enough in
+%relation to the noise variance to arrive at a reasonable bias, in general;
+%reducing below 400 will increase the bias for 0.05 variance.
+
+
 U = 0.8*idinput([T+N+Tini, nu], 'PRBS', [0, 1], [0, 1])';
-l1=1*1e+5;               % Weight of g regularization (zero if there is no noise)
-l2=1*1e+5;               %lambda 2 
-l3=1*1e+5;               %lambda 3 
+l1=5e+4;               % Weight of g regularization (zero if there is no noise)
+l2=1e+4;               %lambda 2 
+l3=1e+4;               %lambda 3 
 
 X = zeros(n, size(U,2));
 Y = zeros(ny,size(U,2));
@@ -108,10 +114,10 @@ objective = objective + l1*(g'*(eye(length(PI))-PI)'*(eye(length(PI))-PI)*g) + l
 
 %above the term g'*(eye(length(PI))-PI)'*(eye(length(PI))-PI)*g can be
 %replaced by g'*g to obtain the original DeePC regularization, which is
-%however not consistent
+%however not consistent 
 
 % Build constraints
-constraints = [du_ini==dUp*g+1*sigma_du, y_ini==Yp*g+1*sigma_y, y==Yf*g, du==dUf*g]; %offset-free DeePC equality constraints
+constraints = [du_ini==dUp*g+sigma_du, y_ini==Yp*g+sigma_y, y==Yf*g, du==dUf*g]; %offset-free DeePC equality constraints
 for k = 1:N 
     %standard input and output bounds, now with delta U in mind
     constraints = [constraints, ymin<=y(ny*(k-1)+1:ny*k)<=ymax, umin<=u_km+kron(ones(1,k), eye(nu))*du(1:nu*k)<=umax];
@@ -120,7 +126,8 @@ end
 Parameters = {du_ini, y_ini, ref, u_km};
 Outputs = {du, y};
 
-%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent; other solvers can be used with YALMIP
+%% Quadprog is a standard Matlab QP solver; Mosek is numerically more consistent but must be installed (academic license is free);
+%% other solvers can be used with YALMIP
 options = sdpsettings('solver', 'quadprog', 'verbose', 0, 'debug', 0);
 
 controller = optimizer(constraints,objective,options, Parameters, Outputs);
@@ -170,38 +177,21 @@ for k = 1:simLen
         dU_ini = dU_ini(:); %flatten vector
         Y_ini = y(:,k-Tini+1:k);
         Y_ini = Y_ini(:);
-        
+
         [Sol, err] = controller({dU_ini, Y_ini, Rk, u(:,max(1,k-1))});
+
         dUk = Sol{1};
         Yk = Sol{2};
         du(:,k) = dUk(1:nu);
     else
         %To prevent initial feasibility issues, control system in open loop
         % for the first Tini values.
-        du(:,k) = 1*rand(nu, 1);
+        du(:,k) = 1*rand(nu, 1)-u(:,max(1, k-1)); 
     end
     
     %Update system
     u(:,k) = u(:,max(1,k-1)) + du(:,k);
-    
-    %during the initial part of the simulation when random inputs are
-    %generated, the following operations limit the u to the interval [0,1]
-    %where the duty-cycles are constrained
-    
-    %after k>=Tini+1 these operations will have no effect, because the
-    %offset-free SPC solvers enforces the constraints.
-    if u(1,k) >=1
-        u(1,k)=1;
-    end
-    if u(1,k) <=0
-        u(1,k)=0;
-    end
-    if u(2,k) >=1
-        u(2,k)=1;
-    end
-    if u(2,k) <=0
-        u(2,k)=0;
-    end
+       
     x(:,k+1) = A*x(:,k) + B*u(:,k) +[0;0;0;0;1]*d(:,k);
 end
 
@@ -211,7 +201,7 @@ figure();
 ax1 = subplot(311);
 stairs(t, r(1,1:simLen), 'k', 'DisplayName', 'Reference');
 hold on;
-stairs(t, y(1,:), 'r', 'DisplayName', 'iDeePC');
+stairs(t, y(1,:), 'r','LineWidth',1, 'DisplayName', 'iDeePC');
 
 ylabel('Output current [A]');
 legend;
@@ -221,17 +211,18 @@ axis([0 t(end) 0 5.5]);
 ax2 = subplot(312);
 stairs(t, r(1,1:simLen), 'k', 'DisplayName', 'Reference');
 hold on;
-stairs(t, y(1,:), 'r', 'DisplayName', 'iDeePC');
+stairs(t, y(1,:), 'r', 'LineWidth',1, 'DisplayName', 'iDeePC');
 
 ylabel('Output current [A]');
-axis([0 t(end) 4.98 5.02]);
+axis([0 t(end) 4.5 5.5]);
 
 ax3 = subplot(313);
 hold on;
-stairs(t, u(1,:), 'r');
+stairs(t, u(1,:), 'r','LineWidth',1);
 stairs(t, u_ss(1)*ones(1,length(t)), '--k');
-stairs(t, u(2,:), 'b');
+stairs(t, u(2,:), 'b','LineWidth',1);
 stairs(t, u_ss(2)*ones(1,length(t)), '--k');
 
 ylabel('Duty-cycles ');
 xlabel('Time [s]');
+
