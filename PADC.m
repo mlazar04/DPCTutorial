@@ -1,5 +1,7 @@
 function [sys, ymin, ymax, umin, umax, Mx, Nx, Mu, Nu] = PADC()
 
+%% Author: Xu Duo
+
 %% Amplifier circuit parameters
 Vbus = 360;
 Rm = 10;
